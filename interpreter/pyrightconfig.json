@@ -1,0 +1,21 @@
+{
+    "executionEnvironments": [
+        {
+            "root": ".",
+            "pythonExecutable": "./.venv/bin/python",
+            "extraPaths": [
+                "./src"
+            ]
+        }
+    ],
+    "typeCheckingMode": "basic", 
+    "reportUnusedVariable": "none",
+    
+    "pythonVersion": "3.13.7", 
+    
+    "exclude": [
+        "**/__pycache__",
+        "**/.venv",
+        "**/venv"
+    ]
+}
