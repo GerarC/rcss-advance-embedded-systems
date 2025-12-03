@@ -107,6 +107,11 @@ class BridgeService:
                     self.esp_addr = addr
                     print("[INT] ESP32 connected from:", addr)
                     
+                    # Enviar init automáticamente al servidor RoboCup
+                    print("[INT] Auto-sending INIT to RoboCup server for ESP32 player")
+                    init_msg = "(init MyTeam (version 15))"
+                    self.server_socket.sendto(init_msg.encode(), (self.server_ip, self.initial_server_port))
+                    
                     # Handle this connection in a loop or separate thread? 
                     # For simplicity, let's handle receiving here since we only expect one ESP32
                     self._receive_from_esp32()

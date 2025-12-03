@@ -30,7 +30,6 @@ float objetivo_dir = 0;
 
 // ------ ESTADO DEL PARTIDO ------
 char game_state[32] = "unknown";
-int server_ready = 0; // Indica si ya recibimos respuesta del servidor
 
 // ------ SOCKET GLOBAL ------
 int socket_fd = -1; // se actualiza dinámicamente en tcp_client_task
@@ -111,13 +110,6 @@ void tcp_client_task(void *pvParameters) {
 
     ESP_LOGI(TAG, "¡Conectado!");
 
-    if (!init_enviado) {
-      const char *init_cmd = "init\n";
-      send(socket_fd, init_cmd, strlen(init_cmd), 0);
-      ESP_LOGI(TAG, "INIT enviado");
-      init_enviado = 1;
-    }
-
     char rx_buffer[256];
 
     while (1) {
@@ -126,12 +118,6 @@ void tcp_client_task(void *pvParameters) {
       if (len > 0) {
         rx_buffer[len] = '\0';
         ESP_LOGI(TAG, "RX: %s", rx_buffer);
-        
-        // Marcar que el servidor ya respondió
-        if (!server_ready) {
-          server_ready = 1;
-          ESP_LOGI(TAG, "Servidor listo - puede enviar comandos");
-        }
 
         if (strncmp(rx_buffer, "referee ", 8) == 0) {
           sscanf(rx_buffer, "referee %31s", game_state);
@@ -157,7 +143,6 @@ void tcp_client_task(void *pvParameters) {
 
     close(socket_fd);
     socket_fd = -1;
-    server_ready = 0; // Resetear para la próxima conexión
 
     vTaskDelay(pdMS_TO_TICKS(2000));
   }
@@ -170,11 +155,6 @@ void ai_behavior_task(void *pvParameters) {
 
   while (1) {
     vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(100));
-
-    // Solo enviar comandos si el servidor está listo
-    if (!server_ready) {
-      continue;
-    }
 
     if (strcmp(game_state, "kick_off_l") == 0) {
       strcpy(cmd, "kick 50 0");
@@ -231,11 +211,9 @@ void ai_behavior_task(void *pvParameters) {
       }
     }
 
-    // Antes del inicio del juego - solo si el estado es "unknown" o "before_kick_off"
-    if (strcmp(game_state, "unknown") == 0 || strcmp(game_state, "before_kick_off") == 0) {
-      strcpy(cmd, "move -12 -20");
-      xQueueSend(command_queue, cmd, 0);
-    }
+    // Antes del inicio del juego
+    strcpy(cmd, "move -12 -20");
+    xQueueSend(command_queue, cmd, 0);
   }
 }
 
