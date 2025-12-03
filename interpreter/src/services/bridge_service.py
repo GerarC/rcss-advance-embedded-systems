@@ -146,15 +146,26 @@ class BridgeService:
 
     def _process_esp32_message(self, msg):
         msg = msg.strip()
+        
+        # Handle init command separately
         if msg.lower() == "init":
             print("[INT] INIT received -> sending (init MyTeam) to port 6000")
             texto = "(init MyTeam (version 15))"
             self.server_socket.sendto(texto.encode(), (self.server_ip, self.initial_server_port))
             return
 
-        print(f"[INT] Forwarding to RoboCup server (UDP:{self.current_server_port}): {msg}")
-        msg = "(" + msg + ")"
-        self.server_socket.sendto(msg.encode(), (self.server_ip, self.current_server_port))
+        # Split by newlines in case multiple commands arrived in one TCP packet
+        commands = [cmd.strip() for cmd in msg.split('\n') if cmd.strip()]
+        
+        for command in commands:
+            # Skip if it's another init command
+            if command.lower() == "init":
+                continue
+                
+            # Wrap each command individually in parentheses
+            formatted_cmd = "(" + command + ")"
+            print(f"[INT] Forwarding to RoboCup server (UDP:{self.current_server_port}): {formatted_cmd}")
+            self.server_socket.sendto(formatted_cmd.encode(), (self.server_ip, self.current_server_port))
 
     def _receive_from_server(self):
         print("[INT] Listening for RoboCup server messages...")
