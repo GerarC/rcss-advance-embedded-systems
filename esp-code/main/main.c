@@ -15,7 +15,7 @@
 
 #define WIFI_SSID "201122"
 #define WIFI_PASS "andres2003"
-#define SERVER_IP "10.0.2.15"
+#define SERVER_IP "192.168.1.59"
 #define SERVER_PORT 5000
 
 static const char *TAG = "WIFI_TCP";
@@ -25,9 +25,12 @@ QueueHandle_t command_queue;
 // ------ ESTADO DEL BALÓN ------
 float ball_dist = -1;
 float ball_dir = 0;
+float objetivo_dist = -1;
+float objetivo_dir = 0;
 
 // ------ ESTADO DEL PARTIDO ------
 char game_state[32] = "unknown";
+int server_ready = 0; // Indica si ya recibimos respuesta del servidor
 
 // ------ SOCKET GLOBAL ------
 int socket_fd = -1; // se actualiza dinámicamente en tcp_client_task
@@ -123,16 +126,28 @@ void tcp_client_task(void *pvParameters) {
       if (len > 0) {
         rx_buffer[len] = '\0';
         ESP_LOGI(TAG, "RX: %s", rx_buffer);
+        
+        // Marcar que el servidor ya respondió
+        if (!server_ready) {
+          server_ready = 1;
+          ESP_LOGI(TAG, "Servidor listo - puede enviar comandos");
+        }
 
-        // ESTADO DEL PARTIDO
         if (strncmp(rx_buffer, "referee ", 8) == 0) {
           sscanf(rx_buffer, "referee %31s", game_state);
           ESP_LOGI(TAG, "ESTADO: %s", game_state);
         }
 
-        // BALÓN
-        if (strncmp(rx_buffer, "ball ", 5) == 0) {
-          sscanf(rx_buffer, "ball %f %f %*f %*f", &ball_dist, &ball_dir);
+        // Buscar "ball"
+        char *p_ball = strstr(rx_buffer, "ball ");
+        if (p_ball) {
+          sscanf(p_ball, "ball %f %f", &ball_dist, &ball_dir);
+        }
+
+        // Buscar "objetivo"
+        char *p_obj = strstr(rx_buffer, "objetivo ");
+        if (p_obj) {
+          sscanf(p_obj, "objetivo %f %f", &objetivo_dist, &objetivo_dir);
         }
       } else {
         ESP_LOGE(TAG, "Servidor cerró conexión");
@@ -142,8 +157,9 @@ void tcp_client_task(void *pvParameters) {
 
     close(socket_fd);
     socket_fd = -1;
+    server_ready = 0; // Resetear para la próxima conexión
 
-    vTaskDelay(pdMS_TO_TICKS(2000)); // reconectar
+    vTaskDelay(pdMS_TO_TICKS(2000));
   }
 }
 
@@ -155,8 +171,13 @@ void ai_behavior_task(void *pvParameters) {
   while (1) {
     vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(100));
 
+    // Solo enviar comandos si el servidor está listo
+    if (!server_ready) {
+      continue;
+    }
+
     if (strcmp(game_state, "kick_off_l") == 0) {
-      strcpy(cmd, "kick 50 45");
+      strcpy(cmd, "kick 50 0");
       xQueueSend(command_queue, cmd, 0);
       continue;
     }
@@ -164,26 +185,57 @@ void ai_behavior_task(void *pvParameters) {
     if (strcmp(game_state, "play_on") == 0) {
 
       if (ball_dist < 0)
+        continue; // aún no veo el balón
+
+      // 1. Alinearse hacia el balón
+      if (ball_dist > 3) {
+
+        if (ball_dir > 10)
+          sprintf(cmd, "turn %.1f", ball_dir);
+        else if (ball_dir < -10)
+          sprintf(cmd, "turn %.1f", ball_dir);
+        else
+          sprintf(cmd, "dash %d %.1f", 80, ball_dir);
+
+        xQueueSend(command_queue, cmd, 0);
         continue;
+      } else if (ball_dist > 0.7 && ball_dist < 3) {
+        sprintf(cmd, "dash %d %.1f", 20, ball_dir);
 
-      if (ball_dir > 10)
-        strcpy(cmd, "turn 2");
-      else if (ball_dir < -10)
-        strcpy(cmd, "turn -2");
-      else if (ball_dist > 3)
-        strcpy(cmd, "dash 100 0");
-      else if (ball_dist < 3 && ball_dist > 0.7)
-        strcpy(cmd, "dash 30 0");
-      else
-        strcpy(cmd, "kick 80 0");
+        xQueueSend(command_queue, cmd, 0);
+        continue;
+      } else if (ball_dist > 0.5 && ball_dist < 0.7) {
+        sprintf(cmd, "dash %d %.1f", 5, ball_dir);
 
-      xQueueSend(command_queue, cmd, 0);
-      continue;
+        xQueueSend(command_queue, cmd, 0);
+        continue;
+      }
+
+      // ----- Ahora estamos cerca del balón -----
+
+      // 2. Dribbling: movernos hacia el objetivo mientras controlamos balón
+      if (ball_dist <= 0.5 && objetivo_dist > 5) {
+
+        // alinearse al objetivo
+        sprintf(cmd, "kick 20 %.1f", objetivo_dir);
+
+        xQueueSend(command_queue, cmd, 0);
+        continue;
+      }
+
+      // 3. Ya estoy cerca del objetivo → tirar!!
+      if (objetivo_dist <= 5) {
+        strcpy(cmd, "kick 80 -30");
+        xQueueSend(command_queue, cmd, 0);
+        continue;
+      }
     }
 
-    // Antes del inicio del juego
-    strcpy(cmd, "move -0.42 0");
-    xQueueSend(command_queue, cmd, 0);
+    // Antes del inicio del juego - solo si el estado es "unknown" o "before_kick_off"
+    if (strcmp(game_state, "unknown") == 0 || strcmp(game_state, "before_kick_off") == 0) {
+      strcpy(cmd, "move -12 -20");
+      xQueueSend(command_queue, cmd, 0);
+    }
   }
 }
 

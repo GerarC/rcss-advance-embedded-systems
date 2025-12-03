@@ -101,16 +101,29 @@ def recibir_del_server():
                 bandera = 0
             else:
                 print(f"[SERVER:{puerto_origen}] {msg}")
+                flag_dis = -1
+                flag_dir = -1
+                velx = -1
+                vely = -1
                 balls = re.findall(r"\(\(b\)\s*([\-0-9\.]+)\s*([\-0-9\.]+)\s*([\-0-9\.]+)\s*([\-0-9\.]+)\)", msg)
+                flags = re.findall(r"\(\(f p r c\)\s*([\-0-9\.]+)\s*([\-0-9\.]+)\)", msg)
+                if not flags:
+                    flags = re.findall(r"\(\(f p r c\)\s*([\-0-9\.]+)\s*([\-0-9\.]+)\s*([\-0-9\.]+)\s*([\-0-9\.]+)\)", msg)
+                    if flags:
+                        flag_dis, flag_dir, velx, vely = flags[0]
+                else:
+                    flag_dis, flag_dir = flags[0]
+                    
+                
                 if balls == "":
                     dist = -1
                     direction = -1
                     nada = -1
                     nada1 = -1
-                    texto = f"ball {dist} {direction} {nada} {nada1}\n"
+                    texto = f"ball {dist} {direction} {nada} {nada1} objetivo {flag_dis} {flag_dir}\n"
                     esp_conn.sendall(texto.encode())
                 for dist, direction, nada, nada1 in balls:
-                    texto = f"ball {dist} {direction} {nada} {nada1}\n"
+                    texto = f"ball {dist} {direction} {nada} {nada1} objetivo {flag_dis} {flag_dir}\n"
                     esp_conn.sendall(texto.encode())
                     print("[INT → ESP] balón:", texto.strip())
             #esp_conn.sendall((msg + "\n").encode())
