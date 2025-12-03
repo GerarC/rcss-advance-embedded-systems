@@ -205,17 +205,42 @@ class BridgeService:
                 except:
                     pass
             else:
-                # print(f"[SERVER:{port_origin}] {msg}")
+                print(f"[SERVER:{port_origin}] {msg}")
+                flag_dis = -1
+                flag_dir = -1
+                velx = -1
+                vely = -1
+                
+                # Extract ball information
                 balls = re.findall(r"\(\(b\)\s*([\-0-9\.]+)\s*([\-0-9\.]+)\s*([\-0-9\.]+)\s*([\-0-9\.]+)\)", msg)
                 
-                # If no ball found? The original code logic was a bit weird here:
-                # if balls == "": ... (this is never true for re.findall result which is a list)
-                # But let's keep the logic of parsing balls if present.
+                # Extract flag information (f p r c) - goal post
+                flags = re.findall(r"\(\(f p r c\)\s*([\-0-9\.]+)\s*([\-0-9\.]+)\)", msg)
+                if not flags:
+                    # Try with velocity data
+                    flags = re.findall(r"\(\(f p r c\)\s*([\-0-9\.]+)\s*([\-0-9\.]+)\s*([\-0-9\.]+)\s*([\-0-9\.]+)\)", msg)
+                    if flags:
+                        flag_dis, flag_dir, velx, vely = flags[0]
+                else:
+                    flag_dis, flag_dir = flags[0]
                 
-                for dist, direction, nada, nada1 in balls:
-                    texto = f"ball {dist} {direction} {nada} {nada1}\n"
+                # If no ball detected, send -1 values
+                if not balls:
+                    dist = -1
+                    direction = -1
+                    nada = -1
+                    nada1 = -1
+                    texto = f"ball {dist} {direction} {nada} {nada1} objetivo {flag_dis} {flag_dir}\n"
                     try:
                         self.esp_conn.sendall(texto.encode())
-                        print("[INT -> ESP] ball:", texto.strip())
                     except Exception as e:
                         print("[INT] Error sending ball to ESP:", e)
+                else:
+                    # Send ball data with objective (flag) information
+                    for dist, direction, nada, nada1 in balls:
+                        texto = f"ball {dist} {direction} {nada} {nada1} objetivo {flag_dis} {flag_dir}\n"
+                        try:
+                            self.esp_conn.sendall(texto.encode())
+                            print("[INT -> ESP] balón:", texto.strip())
+                        except Exception as e:
+                            print("[INT] Error sending ball to ESP:", e)
